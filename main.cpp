@@ -9,6 +9,10 @@ using namespace std;
 
 // PLAYSDK的空闲通道号
 LONG gPlayPort = 0;
+SDL_Texture *sdlTexture;
+SDL_Renderer *sdlRenderer;
+int screen_w = 500, screen_h = 500;
+SDL_Window *screen;
 
 //断线回调
 void CALL_METHOD Disconnect(LLONG lLoginID, char *pchDVRIP, LONG nDVRPort, LDWORD dwUser)
@@ -33,40 +37,34 @@ void CALL_METHOD fDisplayCB(LONG nPort, char *pBuf, LONG nSize, LONG nWidth,
 			    LONG nHeight, LONG nStamp, LONG nType,
 			    void *pReserved)
 {
+	SDL_Rect sdlRect;
+
 	//pBuf是数据指针 nSize是buf大小，通过这两个数据，可以取到yuv数据了
+	SDL_UpdateTexture(sdlTexture, NULL, pBuf, nWidth);
+	//FIX: If window is resize
+	sdlRect.x = 0;
+	sdlRect.y = 0;
+	sdlRect.w = screen_w;
+	sdlRect.h = screen_h;
 
-	gnIndex++;
-	if (gnIndex == 30) {
-		gnIndex = 0;
-		cout << "YUV" << endl;
-	}
-
-	return;
+	SDL_RenderClear(sdlRenderer);
+	SDL_RenderCopy(sdlRenderer, sdlTexture, NULL, &sdlRect);
+	SDL_RenderPresent(sdlRenderer);
 }
 
-void sdl_init(void){
-	SDL_Window *screen;
+void sdl_init(void) {
 	Uint32 pixformat = 0;
-	SDL_Texture *sdlTexture;
-	FILE *fp = NULL;
-	SDL_Renderer *sdlRenderer;
-	SDL_Rect sdlRect;
-	SDL_Event event;
 	SDL_Thread *refresh_thread;
 
-	int screen_w = 500, screen_h = 500;
-	const int pixel_w = 320, pixel_h = 180;
+	const int pixel_w = 2592, pixel_h = 1520;
 
 	if (SDL_Init(SDL_INIT_VIDEO)) {
 		printf("Could not initialize SDL - %s\n", SDL_GetError());
 		return;
 	}
 	//SDL 2.0 Support for multiple windows
-	screen =
-	    SDL_CreateWindow("Simplest Video Play SDL2",
-	                     SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED,
-	                     screen_w, screen_h,
-	                     SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE);
+	screen = SDL_CreateWindow("Simplest Video Play SDL2", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED,
+	                     screen_w, screen_h, SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE);
 	if (!screen) {
 		printf("SDL: could not create window - exiting:%s\n",
 		       SDL_GetError());
@@ -79,9 +77,8 @@ void sdl_init(void){
 	//YV12: Y + V + U  (3 planes)
 	pixformat = SDL_PIXELFORMAT_IYUV;
 
-	sdlTexture =
-	    SDL_CreateTexture(sdlRenderer, pixformat,
-	                      SDL_TEXTUREACCESS_STREAMING, pixel_w, pixel_h);
+	sdlTexture = SDL_CreateTexture(sdlRenderer, pixformat, SDL_TEXTUREACCESS_STREAMING,
+		pixel_w, pixel_h);
 }
 
 int main()
@@ -91,6 +88,7 @@ int main()
 	char szUser[32] = "admin";
 	char szPwd[32] = "1234abcd";
 	int nPort = 37777;
+	SDL_Event event;
 
 	sdl_init();
 	//初始化SDK资源,设置断线回调函数
@@ -132,7 +130,13 @@ int main()
 	CLIENT_SetRealDataCallBack(lRealHandle, fRealDataCB, 0);
 
 	while (1) {
-		sleep(100);
+		SDL_WaitEvent(&event);
+		if (event.type == SDL_WINDOWEVENT) {
+			//If Resize
+			SDL_GetWindowSize(screen, &screen_w, &screen_h);
+		} else if (event.type == SDL_QUIT) {
+			break;
+		}
 	}
 
 	PLAY_Stop(gPlayPort);
